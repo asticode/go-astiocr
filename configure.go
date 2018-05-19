@@ -20,7 +20,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-const numSteps = "100"
+const numSteps = "10000"
 
 // ^\[([^\[]+)\]\((.+)\)
 var regexpTrainedModel = regexp.MustCompile("^\\[([^\\[]+)\\]\\((.+)\\)")
@@ -152,7 +152,7 @@ func (t *Trainer) createConfigureFolders() (err error) {
 }
 
 var trainScript = "python scripts/train.py --logtostderr --train_dir=output/training --pipeline_config_path=config/model.config"
-var evalScript = "python scripts/eval.py --logtostderr --checkpoint_dir=output/training --pipeline_config_path=config/model.config --eval_dir=output/eval"
+var evalScript = "python3 scripts/eval.py --logtostderr --checkpoint_dir=output/training --pipeline_config_path=config/model.config --eval_dir=output/eval"
 var exportInferenceGraphScript = "python scripts/export_inference_graph.py --input_type image_tensor --pipeline_config_path=config/model.config --trained_checkpoint_prefix output/training/model.ckpt-" + numSteps + " --output_directory output/model"
 
 func (t *Trainer) createTrainScripts(ctx context.Context) (err error) {
@@ -263,7 +263,7 @@ func (t *Trainer) createConfigFile(ctx context.Context, modelName string) (err e
 
 		// Loop through regexp
 		for r, v := range map[*regexp.Regexp]string{
-			regexpNumClasses:         strconv.Itoa(len(characters)),
+			regexpNumClasses:         "2", // strconv.Itoa(len(characters)),
 			regexpBatchSize:          "10",
 			regexpFineTuneCheckpoint: "\"config/model.ckpt\"",
 			regexpNumSteps:           numSteps,

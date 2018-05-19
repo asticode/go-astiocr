@@ -72,48 +72,18 @@ func (t *Trainer) Gather(ctx context.Context) (err error) {
 			return
 		}
 
-		// Initialize parameters
-		fontSize, coverage, backgroundColor, fontColor, font := t.initParams()
-
 		// Create image
-		img, si := t.createImage(backgroundColor)
+		var img *image.RGBA
+		var si GatherSummaryImage
+		if idx < t.trainingDataCount {
+			img, si = t.createImageStrategy2()
+		} else {
+			img, si = t.createImageStrategy2()
+		}
 
-		// Loop through rows
-		step := fontSize
-		for row := step; row < t.image.Height; row += step {
-			// Loop through columns
-			for col := 0; col+step < t.image.Width; col += step {
-				// Get grid coordinates
-				x0, x1, y0, y1 := col, col+step, row-step, row
-
-				// Show grid
-				if t.showGrid {
-					t.drawBox(x0, x1, y0, y1, img, fontColor)
-				}
-
-				// Check coverage
-				if rand.Intn(100) > coverage {
-					continue
-				}
-
-				// Show box
-				if t.showBox && !t.showGrid {
-					t.drawBox(x0, x1, y0, y1, img, fontColor)
-				}
-
-				// Draw character
-				char, charIdx := t.drawCharacter(img, fontColor, font, fontSize, col, row)
-
-				// Add box to summary
-				si.Boxes = append(si.Boxes, GatherSummaryBox{
-					Label:      string(char),
-					LabelIndex: charIdx + 1,
-					X0:         x0,
-					X1:         x1,
-					Y0:         y0,
-					Y1:         y1,
-				})
-			}
+		// No boxes
+		if len(si.Boxes) == 0 {
+			continue
 		}
 
 		// Store image
@@ -188,17 +158,56 @@ func (t *Trainer) createLabelMap() (err error) {
 	// Loop through characters
 	astilog.Debugf("astiocr: creating label map to %s", p)
 	for idx, c := range characters {
-		if _, err = f.WriteString(fmt.Sprintf("item {\n  id: %d\n  name: '%s'\n}\n", idx+1, string(c))); err != nil {
-			err = errors.Wrapf(err, "astiocr: writing to %s failed", p)
-			return
+		if c == 'E' || c == 'e' {
+			if _, err = f.WriteString(fmt.Sprintf("item {\n  id: %d\n  name: '%s'\n}\n", idx+1, string(c))); err != nil {
+				err = errors.Wrapf(err, "astiocr: writing to %s failed", p)
+				return
+			}
 		}
 	}
 	return
 }
 
-func (t *Trainer) initParams() (fontSize, coverage int, backgroundColor, fontColor color.RGBA, font *font) {
+func (t *Trainer) createImageStrategy1() (img *image.RGBA, si GatherSummaryImage) {
+	// Initialize parameters
+	fontSize, backgroundColor, fontColor, font := t.initParams()
+
+	// Get coordinates
+	x0, x1, y0, y1 := 0, int(float64(fontSize)*1.5), 0, int(float64(fontSize)*1.5)
+
+	// Create image
+	img, si = t.createImage(backgroundColor, y1, x1)
+
+	// Draw character
+	char, charIdx := t.drawCharacter(img, fontColor, font, fontSize, int(float64(fontSize)*0.3), int(float64(fontSize)*1.3))
+
+	// Add box to summary
+	si.Boxes = append(si.Boxes, GatherSummaryBox{
+		Label:      string(char),
+		LabelIndex: charIdx + 1,
+		X0:         x0,
+		X1:         x1,
+		Y0:         y0,
+		Y1:         y1,
+	})
+	return
+}
+
+func (t *Trainer) createImageStrategy2() (img *image.RGBA, si GatherSummaryImage) {
+	// Initialize parameters
+	fontSize, backgroundColor, fontColor, font := t.initParams()
+	coverage := rand.Intn(50)
+
+	// Create image
+	img, si = t.createImage(backgroundColor, t.image.Height, t.image.Width)
+
+	// Draw characters
+	t.drawCharacters(fontSize, coverage, img, fontColor, &si, font)
+	return
+}
+
+func (t *Trainer) initParams() (fontSize int, backgroundColor, fontColor color.RGBA, font *font) {
 	fontSize = rand.Intn(6) + 12
-	coverage = rand.Intn(50)
 	cc := t.colors[0]
 	if len(t.colors) > 1 {
 		cc = t.colors[rand.Intn(len(t.colors)-1)]
@@ -215,16 +224,59 @@ func (t *Trainer) initParams() (fontSize, coverage int, backgroundColor, fontCol
 	return
 }
 
-func (t *Trainer) createImage(backgroundColor color.Color) (img *image.RGBA, si GatherSummaryImage) {
+func (t *Trainer) createImage(backgroundColor color.Color, height, width int) (img *image.RGBA, si GatherSummaryImage) {
 	// Create image
-	img = image.NewRGBA(image.Rect(0, 0, t.image.Width, t.image.Height))
+	img = image.NewRGBA(image.Rect(0, 0, width, height))
 	si = GatherSummaryImage{
-		Height: t.image.Height,
-		Width:  t.image.Width,
+		Height: height,
+		Width:  width,
 	}
 
 	// Draw background
 	draw.Draw(img, img.Bounds(), &image.Uniform{backgroundColor}, image.ZP, draw.Src)
+	return
+}
+
+func (t *Trainer) drawCharacters(fontSize, coverage int, img *image.RGBA, fontColor color.RGBA, si *GatherSummaryImage, font *font) {
+	step := fontSize
+	for row := step; row < t.image.Height; row += step {
+		// Loop through columns
+		for col := 0; col+step < t.image.Width; col += step {
+			// Get grid coordinates
+			x0, x1, y0, y1 := col, col+step, row-step, row
+
+			// Show grid
+			if t.showGrid {
+				t.drawBox(x0, x1, y0, y1, img, fontColor)
+			}
+
+			// Check coverage
+			if rand.Intn(100) > coverage {
+				continue
+			}
+
+			// Draw character
+			char, charIdx := t.drawCharacter(img, fontColor, font, fontSize, col, row)
+
+			// Only parse "e" letters for now
+			if char == "E" || char == "e" {
+				// Show box
+				if t.showBox && !t.showGrid {
+					t.drawBox(x0, x1, y0, y1, img, fontColor)
+				}
+
+				// Add box to summary
+				si.Boxes = append(si.Boxes, GatherSummaryBox{
+					Label:      string(char),
+					LabelIndex: charIdx + 1,
+					X0:         x0,
+					X1:         x1,
+					Y0:         y0,
+					Y1:         y1,
+				})
+			}
+		}
+	}
 	return
 }
 
